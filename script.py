@@ -30,7 +30,7 @@ def parseG1(line,X,Y,F):
     time=math.sqrt((X-Xnew)**2+(Y-Ynew)**2)/Fnew
     return time,Xnew,Ynew,Fnew
 
-    
+
 
 
 delay=float(sys.argv[1])
@@ -53,6 +53,29 @@ else:
     destFile = sourceFile
     os.remove(sourceFile)
 
+last_percent=-5
+def update_progress(current,full):
+    global last_percent
+    if current*100//full-last_percent>=5:
+        last_percent=current*100//full
+        print_progress_bar(last_percent)
+
+def print_progress_bar(x):
+    clear_screen()
+    print("|",end="")
+    eq=x//10
+    for i in range(eq):
+        print("=",end="")
+    for i in range(10-eq):
+        print(" ",end="")
+    print("| "+str(x)+"%")
+
+def clear_screen():
+    if os.name == 'nt':
+        os.system('cls')
+    else:
+        os.system('clear')
+
 fan=0
 feed=10000
 coordX=0
@@ -64,6 +87,7 @@ times=[]
 with open(destFile, "w") as of:
     of.write('; FanStartUp postproccess\n')
     for lIndex in range(len(lines)):
+        update_progress(lIndex,len(lines))
         oline = lines[lIndex]
         outLines.append(oline)
         # Parse gcode line
