@@ -6,12 +6,13 @@ import math
 
 
 def getParam(line,p):
+    DIGITS="0123456789.,"
     out=""
     i=0
     while line[i]!=p:
         i+=1
     i+=1
-    while i<len(line) and line[i]!=" ":
+    while i<len(line) and line[i] in DIGITS:
         out+=line[i]
         i+=1
     return float(out)
