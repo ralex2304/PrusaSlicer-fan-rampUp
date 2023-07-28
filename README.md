@@ -1,16 +1,30 @@
-# Prusaslicer fan ramp up postproccessor
+# PrusaSlicer fan ramp up postprocessor
 
-Postproccessor for PS that turns on the model fan in advance.
-Primitive time calculation without taking into account accelerations.
+Postprocessor for PrusaSlicer that turns on the model fan in advance.
+
+Uses [fork](https://github.com/ralex2304/klipper_estimator) of [klipper_estimator](https://github.com/Annex-Engineering/klipper_estimator) by [Annex-Engineering](https://github.com/Annex-Engineering) for time calculations
+
+## Installation
+Download directory `prusaslicer-fan-rampup` with 2 files: `klipper_estimator.exe` and `script.py`
 
 ## Usage
-Type in PrusaSlicer postprocessing scripts section:
-`python <path>\prusaslicer-fan-rampup\script.py <time>;`
+Type in PrusaSlicer postprocessing scripts section **2 lines**:
 
-E. g.
+```
+<path>\prusaslicer-fan-rampup\klipper_estimator.exe dump-moves;
+python <path>\prusaslicer-fan-rampup\script.py <ramp-up-time>;
+```
 
-`C:\Users\A\AppData\Local\Programs\Python\Python310\python.exe D:\Documents\prusaslicer-fan-rampup\script.py 0.8;`
+E.g.
 
-## Plans
+```
+D:\Downloads\klipper_estimator.exe dump-moves;
+C:\Users\A\AppData\Local\Programs\Python\Python310\python.exe D:\Documents\PrusaSlicer-postproccesors\PrusaSlicer-fan-rampUp\script.py 1.5;
+```
 
-I would like to improve the time calculation using https://github.com/Annex-Engineering/klipper_estimator
+### Warning
+Don't use klipper_estimator `--config_file` option. It will not work correctly
+
+## Thanks
+
+[Annex-Engineering](https://github.com/Annex-Engineering) - [klipper_estimator plugin](https://github.com/Annex-Engineering/klipper_estimator)
