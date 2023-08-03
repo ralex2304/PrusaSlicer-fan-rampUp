@@ -18,21 +18,17 @@ class Pos:
 
 @dataclass
 class GcodeLine:
-    line: str
+    line: str or int
     pos: Pos
-    time: float = 0
+    time: float
 
 
-def getParam(line: str, p: str) -> float:
+def getParam(line: str, p: str) -> float or None:
     DIGITS = "-0123456789.,"
     out = ""
-    i = 0
-    while i + len(p) <= len(line) and line[i:i + len(p)] != p:
-        i += 1
-    if i + len(p) > len(line):
-        print("getParam(): Can't find parameter: ", p, " in line: ", line)
-        input()
-        return 0
+    i = line.find(p)
+    if i == -1:
+        return None
     i += len(p)
     while i < len(line) and line[i] in DIGITS:
         out += line[i]
@@ -51,7 +47,39 @@ def rmComment(line: str) -> str:
 
 def parseLine(line: str, prev: Pos) -> Pos:
     cur: Pos = copy(prev)
-    if line.startswith("G90"):
+    if not line.startswith(("G", "M")):
+        return cur
+    if line.startswith(("G1 ", "G0 ")):
+        lineRmCom = rmComment(line)
+        if cur.XYZabs:
+            X = getParam(lineRmCom, "X")
+            if X is not None:
+                cur.X = X
+            Y = getParam(lineRmCom, "Y")
+            if Y is not None:
+                cur.Y = Y
+            Z = getParam(lineRmCom, "Z")
+            if Z is not None:
+                cur.Z = Z
+        else:
+            X = getParam(lineRmCom, "X")
+            if X is not None:
+                cur.X += X
+            Y = getParam(lineRmCom, "Y")
+            if Y is not None:
+                cur.Y += Y
+            Z = getParam(lineRmCom, "Z")
+            if Z is not None:
+                cur.Z += Z
+        if cur.Eabs:
+            E = getParam(lineRmCom, "E")
+            if E is not None:
+                cur.E = E
+        else:
+            E = getParam(lineRmCom, "E")
+            if E is not None:
+                cur.E += E
+    elif line.startswith("G90"):
         cur.XYZabs = True
     elif line.startswith("G91"):
         cur.XYZabs = False
@@ -59,28 +87,6 @@ def parseLine(line: str, prev: Pos) -> Pos:
         cur.Eabs = True
     elif line.startswith("M83"):
         cur.Eabs = False
-    elif line.startswith("G1 ") or line.startswith("G0 "):
-        lineRmCom = rmComment(line)
-        if cur.XYZabs:
-            if "X" in lineRmCom:
-                cur.X = getParam(lineRmCom, "X")
-            if "Y" in lineRmCom:
-                cur.Y = getParam(lineRmCom, "Y")
-            if "Z" in lineRmCom:
-                cur.Z = getParam(lineRmCom, "Z")
-        else:
-            if "X" in lineRmCom:
-                cur.X += getParam(lineRmCom, "X")
-            if "Y" in lineRmCom:
-                cur.Y += getParam(lineRmCom, "Y")
-            if "Z" in lineRmCom:
-                cur.Z += getParam(lineRmCom, "Z")
-        if cur.Eabs:
-            if "E" in lineRmCom:
-                cur.E = getParam(lineRmCom, "E")
-        else:
-            if "E" in lineRmCom:
-                cur.E += getParam(lineRmCom, "E")
     return cur
 
 
@@ -108,16 +114,17 @@ def removeGXYZE(line: str) -> str:
 def splitLine(
     cur: GcodeLine, bef: GcodeLine, d: float
 ) -> tuple[GcodeLine, GcodeLine]:
-    all = cur.time
+    all = cur.time - bef.time
     if not (cur.line.startswith("G0 ") or cur.line.startswith("G1 ")):
         if not (cur.line.startswith("G10") or cur.line.startswith("G11")):
-            print(
-                "SplitLine(): error. G0/G1 not found.\
-                 Check klipper_estimator parameters"
-            )
+            print("SplitLine(): error. G0/G1 not found.",
+                  "Check klipper_estimator parameters")
+            print(cur.line)
             input("Press any key to continue")
-            return cur.line, ";FanRampUp: split error"
-        return cur.line, ";FanRampUp: can't split G10/G11"
+            return GcodeLine(";FanRampUp: split error",
+                             cur.pos, cur.time), copy(cur)
+        return GcodeLine(";FanRampUp: can't split G10/G11",
+                         cur.pos, cur.time), copy(cur)
     lineRmCom = rmComment(cur.line)
     prefix = cur.line[0:2]
     suffix = removeGXYZE(cur.line)
@@ -167,7 +174,31 @@ def splitLine(
             s2 += " E" + str(E * (all - d) / all)
     s1 += suffix
     s2 += suffix
-    return GcodeLine(s1, copy(pos1), 0), GcodeLine(s2, copy(pos2), 0)
+    time1 = bef.time + (cur.time - bef.time) * d / all
+    time2 = cur.time
+    return GcodeLine(s1, copy(pos1), time1), GcodeLine(s2, copy(pos2), time2)
+
+
+def findLineByTime(lines: list[list[GcodeLine]], target: int) -> (int, int):
+    if target <= 0:
+        return 0, 1
+    L: int = 0
+    R: int = len(lines) - 1
+    M: int = (L + R) // 2
+    while R-L > 1:
+        if target > lines[M][-1].time:
+            L = M
+        else:
+            R = M
+        M = (L + R) // 2
+    i = R
+    if target >= lines[i][-1].time:
+        return i + 1, 0
+    for j in range(len(lines[i]) - 2, -1, -1):
+        if target >= lines[i][j].time:
+            return i, j + 1
+    else:
+        return i, 0
 
 
 delay: float = float(sys.argv[1])
@@ -191,37 +222,30 @@ else:
     destFile = sourceFile
     os.remove(sourceFile)
 
-last_percent: int = -5
+last_percent: int = -10
 
 
-def update_progress(current, full):
+def update_progress(current, full) -> None:
     global last_percent
-    if current * 100 // full - last_percent >= 5:
+    if current * 100 // full - last_percent >= 10:
         last_percent = current * 100 // full
         print_progress_bar(last_percent)
 
 
 def print_progress_bar(x: int) -> None:
-    clear_screen()
-    print("|", end="")
-    eq = x // 10
-    for i in range(eq):
-        print("=", end="")
-    for i in range(10 - eq):
-        print(" ", end="")
-    print("| " + str(x) + "%")
-
-
-def clear_screen() -> None:
-    if os.name == "nt":
-        os.system("cls")
+    if x == 0:
+        print("Fan ramp up")
+        print(" __")
     else:
-        os.system("clear")
+        print(" ||    " + str(x) + "%")
+        if x == 100:
+            print(" ‾‾")
 
 
 currentFan: float = 0
-outLines: list[GcodeLine] = []
-outLines.append(GcodeLine(";FanStartUp postprocess", Pos(0, 0, 0, 0)))
+outLines: list[list[GcodeLine]] = []
+fanCommands: list[list[int]] = []
+outLines.append([GcodeLine(";FanStartUp postprocess", Pos(0, 0, 0, 0), 0)])
 with open(destFile, "w") as of:
     times_begin: int = 0
     while times_begin < len(lines):
@@ -230,10 +254,8 @@ with open(destFile, "w") as of:
             break
         times_begin += 1
     if times_begin == 0:
-        print(
-            "Error. No estimate lines found.\
-                Add klipper_estimator fork to postprocessors"
-        )
+        print("Error. No estimate lines found.",
+              "Add klipper_estimator fork to postprocessors")
         input("Press any key")
         exit(1)
     for i in range(len(lines)):
@@ -241,75 +263,85 @@ with open(destFile, "w") as of:
         update_progress(i, len(lines) // 2)
         if lines[i].startswith(";TIME_ESTIMATE_POSTPROCESSING"):
             break
-        time = 0.0
+        lineTime = 0.0
         if len(lines[times_begin + i]) >= 2:
-            time = float(
-                lines[times_begin + i][0:len(lines[times_begin + i]) - 1]
-            )
-        outLines.append(
+            lineTime = float(lines[times_begin + i])
+        outLines.append([
             GcodeLine(
                 lines[i],
-                parseLine(lines[i], copy(outLines[len(outLines) - 1].pos)),
-                time
+                parseLine(lines[i], copy(outLines[-1][-1].pos)),
+                outLines[-1][-1].time + lineTime
             )
-        )
+        ])
         if lines[i].startswith("M107"):
+            fanCommands.append([len(outLines) - 1, 0])
             currentFan = 0
         elif (lines[i].startswith("M106")
                 and (getParam(lines[i], "S") > currentFan)):
             lines[i] += ";FanPrevS" + str(currentFan)
             currentFan = getParam(lines[i], "S")
-            target = delay
-            del outLines[len(outLines) - 1]
-            for j in range(0, len(outLines) - 1):
-                if outLines[len(outLines) - 1 - j].line.startswith("M107"):
-                    outLines[len(outLines) - 1 - j].line = ""
-                    continue
-                elif outLines[len(outLines) - 1 - j].line.startswith(
-                    "M106"
-                ):
+            target = outLines[-1][-1].time - delay
+            outLines.pop()
+            j, k = findLineByTime(outLines, target)
+            br = False
+            while (len(fanCommands)
+                    and (fanCommands[-1][0] > j or fanCommands[-1][0] == j
+                         and fanCommands[-1][1] >= k)):
+                line = outLines[fanCommands[-1][0]][fanCommands[-1][1]]
+                if line.line.startswith("M107"):
+                    line.line = ""
+                    fanCommands.pop()
+                else:
                     if (
-                        getParam(
-                            outLines[len(outLines) - 1 - j].line,
-                            ";FanPrevS",
-                        )
+                        getParam(line.line, ";FanPrevS")
                         >= currentFan
                     ):
-                        outLines[len(outLines) - 1 - j].line = lines[i]
+                        line.line = lines[i]
+                        br = True
                         break
                     else:
-                        outLines[len(outLines) - 1 - j].line = ""
-                        continue
-                target -= outLines[len(outLines) - 1 - j].time
-                if target == 0:
-                    outLines.insert(
-                        len(outLines) - 1 - j,
-                        GcodeLine(
-                            lines[i],
-                            outLines[len(outLines) - 1 - j].pos,
-                            0,
-                        ),
-                    )
+                        line.line = ""
+                        fanCommands.pop()
+                if br:
                     break
-                elif target < 0:
-                    l1, l2 = splitLine(
-                        outLines[len(outLines) - 1 - j],
-                        outLines[len(outLines) - 1 - j - 1],
-                        -target
-                    )
-                    l1.time = -target
-                    l2.time = outLines[len(outLines) - 1 - j].time + target
-                    outLines[len(outLines) - 1 - j] = copy(l2)
-                    outLines[len(outLines) - 1 - j:len(outLines) - 1 - j] \
-                        = [copy(l1), GcodeLine(lines[i], copy(l1.pos), 0)]
-                    break
+            if br:
+                continue
+            if j == 0 and k == 1:
+                outLines[0].insert(1, GcodeLine(lines[i],
+                                                outLines[0][0].pos,
+                                                0))
+                fanCommands.append([0, 1])
+                continue
+            if k == 0:
+                befLine = outLines[j - 1][-1]
             else:
-                outLines.insert(1, GcodeLine(lines[i], outLines[0].pos, 0))
+                befLine = outLines[j][k - 1]
+            if target == befLine.time:
+                outLines[j].insert(
+                    k,
+                    GcodeLine(
+                        lines[i],
+                        outLines[j][k].pos,
+                        befLine.time,
+                    ),
+                )
+                fanCommands.append([j, k])
+            elif target > befLine.time:
+                l1, l2 = splitLine(
+                    outLines[j][k],
+                    befLine,
+                    target - befLine.time
+                )
+                outLines[j][k] = copy(l2)
+                outLines[j][k:k] \
+                    = [copy(l1),
+                        GcodeLine(lines[i], copy(l1.pos), l1.time)]
+                fanCommands.append([j, k + 1])
         elif lines[i].startswith("M106"):
-            outLines[len(outLines) - 1].line += ";FanPrevS" + str(
-                currentFan
-            )
+            fanCommands.append([len(outLines) - 1, 0])
+            outLines[-1][-1].line += ";FanPrevS" + str(currentFan)
             currentFan = getParam(lines[i], "S")
-    for line in outLines:
-        of.write(line.line + "\n")
+    for i in outLines:
+        for j in i:
+            of.write(j.line + "\n")
     of.close()
