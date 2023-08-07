@@ -5,21 +5,21 @@ Postprocessor for PrusaSlicer that turns on the model fan in advance.
 Uses [fork](https://github.com/ralex2304/klipper_estimator) of [klipper_estimator](https://github.com/Annex-Engineering/klipper_estimator) by [Annex-Engineering](https://github.com/Annex-Engineering) for time calculations
 
 ## Installation
-Download directory `prusaslicer-fan-rampup` with 2 files: `klipper_estimator.exe` and `script.py`
+Download archive `prusaslicer-fan-rampup` from releases. It contains 2 files: `klipper_estimator.exe` and `script.exe`
 
 ## Usage
 Type in PrusaSlicer postprocessing scripts section **2 lines**:
 
 ```
 <path>\prusaslicer-fan-rampup\klipper_estimator.exe dump-moves;
-python <path>\prusaslicer-fan-rampup\script.py <ramp-up-time>;
+<path>\prusaslicer-fan-rampup\script.exe <ramp-up-time>;
 ```
 
 E.g.
 
 ```
 D:\Downloads\klipper_estimator.exe dump-moves;
-C:\Users\A\AppData\Local\Programs\Python\Python310\python.exe D:\Documents\PrusaSlicer-postproccesors\PrusaSlicer-fan-rampUp\script.py 1.5;
+D:\Documents\PrusaSlicer-postproccesors\PrusaSlicer-fan-rampUp\script.exe 1.5;
 ```
 
 ### Warning
