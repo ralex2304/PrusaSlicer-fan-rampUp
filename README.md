@@ -18,7 +18,7 @@ Type in PrusaSlicer postprocessing scripts section **2 lines**:
 E.g.
 
 ```
-D:\Downloads\klipper_estimator.exe dump-moves;
+D:\Documents\PrusaSlicer-postproccesors\PrusaSlicer-fan-rampUp\klipper_estimator.exe dump-moves;
 D:\Documents\PrusaSlicer-postproccesors\PrusaSlicer-fan-rampUp\script.exe 1.5;
 ```
 

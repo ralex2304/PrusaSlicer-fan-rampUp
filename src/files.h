@@ -2,54 +2,55 @@
 #define _FILES_H
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 #include "cvector.h"
 #include "gcode.h"
 #include "errors.h"
 
-#define LINE_MAX_LEN 256
-#define TIME_START_STR L";TIME_ESTIMATE_POSTPROCESSING"
-#define INIT_LINE L";FanStartUp postprocess\n"
-void file_read_lines(const char* filename, cvector* v);
+#define TIME_START_STR  L";TIME_ESTIMATE_POSTPROCESSING"
+#define INIT_LINE       L";FanStartUp postprocess\n"
+
+void file_read_lines(const char* filename, cvector* strings, cvector* symbols, cvector* times);
 void file_write_lines(const char* filename, cvector* v);
 
-void file_read_lines(const char* filename, cvector* v){
+void file_read_lines(const char* filename, cvector* strings, cvector* symbols, cvector* times) {
   FILE* file = fopen(filename, "r");
   if(file == NULL)
     throw_error(ERR_FILE_OPEN, filename);
-  GcodeLine line;
-  gcode_init_line(&line);
+  unsigned long i = 0;
   wchar_t str[LINE_MAX_LEN] = L"";
-  while(!feof (file)) {
-    if (fgetws(str, LINE_MAX_LEN, file)){
-      if(startswith(str, TIME_START_STR))
+  while(!feof(file)) {
+    if (fgetws(str, LINE_MAX_LEN, file)) {
+      if (startswith(str, TIME_START_STR))
         break;
-      line.str = malloc((wcslen(str)+1) * sizeof(wchar_t));
-      wcscpy(line.str, str);
-      gcode_parse_line(&line);
-      cvector_push(v, &line);
+      wchar_t* buf = malloc((wcslen(str)+1) * sizeof(wchar_t));
+      wcscpy(buf, str);
+      cvector_push(strings, &buf);
     }
   }
-  if(feof(file))
+  if (feof(file))
     throw_error(ERR_ESTIMATE_LINES_NOT_FOUND);
-  unsigned int i = 0;
-  long double time = 0;
-  while(!feof (file)) {
+  while (!feof (file)) {
     if (fgetws(str, LINE_MAX_LEN, file)){
-      time += wcstod(str, NULL);
-      ((GcodeLine*) cvector_get(v, i))->time = time;
-      i++;
+      double time = wcstod(str, NULL);
+      cvector_push(times, &time);
     }
   }
+  if (ferror(file))
+    throw_error(ERR_FILE_READ, filename);
   fclose(file);
 }
 
-void file_write_lines(const char* filename, cvector* v){
+void file_write_lines(const char* filename, cvector* v) {
   FILE* file = fopen(filename, "w");
   if(file == NULL)
     throw_error(ERR_FILE_OPEN, filename);
   fputws(INIT_LINE, file);
-  for(unsigned long i = 0; i < v->size; i++)
-    fputws(((GcodeLine*)cvector_get(v, i))->str, file);
+  for (unsigned long i = 0; i < v->size; i++)
+    if (((GcodeLine*)cvector_get(v, i))->str != NULL)
+      fputws(((GcodeLine*)cvector_get(v, i))->str, file);
+  if (ferror(file))
+    throw_error(ERR_FILE_WRITE, filename);
   fclose(file);
 }
 #endif
