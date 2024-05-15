@@ -1,3 +1,7 @@
 .vscode
 *.exe
+main
 release
+/.cache
+/compile_commands.json
+/build
